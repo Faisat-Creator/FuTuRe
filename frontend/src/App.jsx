@@ -1,19 +1,37 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { isValidStellarAddress } from './utils/validateStellarAddress';
 import { validateAmount, formatAmount } from './utils/validateAmount';
 import { getFriendlyError } from './utils/errorMessages';
 import { useWebSocket } from './hooks/useWebSocket';
+import { makeVariants, tapScale } from './utils/animations';
 
 const STATUS_COLORS = { connected: '#22c55e', disconnected: '#ef4444', reconnecting: '#f59e0b' };
+
+// Spinner for loading state
+function Spinner() {
+  return (
+    <motion.span
+      animate={{ rotate: 360 }}
+      transition={{ repeat: Infinity, duration: 0.7, ease: 'linear' }}
+      style={{ display: 'inline-block', marginLeft: 8 }}
+    >⟳</motion.span>
+  );
+}
 
 function App() {
   const [account, setAccount] = useState(null);
   const [balance, setBalance] = useState(null);
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
-  const [status, setStatus] = useState(null); // { type: 'success'|'error', message, retry? }
+  const [status, setStatus] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState('');
+
+  const prefersReduced = useReducedMotion();
+  const v = makeVariants(prefersReduced);
+  const tap = tapScale(prefersReduced);
 
   const setError = (error, retry) => setStatus({ type: 'error', message: getFriendlyError(error), retry });
   const setSuccess = (message) => setStatus({ type: 'success', message });
@@ -38,28 +56,29 @@ function App() {
   const wsStatus = useWebSocket(account?.publicKey ?? null, handleWsMessage);
 
   const createAccount = async () => {
+    setLoading('create');
     try {
       const { data } = await axios.post('/api/stellar/account/create');
       setAccount(data);
       setSuccess('Account created! Save your secret key securely.');
     } catch (error) {
       setError(error, createAccount);
-    }
+    } finally { setLoading(''); }
   };
 
   const checkBalance = async () => {
     if (!account) return;
+    setLoading('balance');
     try {
       const { data } = await axios.get(`/api/stellar/account/${account.publicKey}`);
       setBalance(data);
     } catch (error) {
       setError(error, checkBalance);
-    }
+    } finally { setLoading(''); }
   };
 
   const recipientValid = isValidStellarAddress(recipient);
   const recipientTouched = recipient.length > 0;
-
   const xlmBalance = balance?.balances?.find(b => b.asset === 'XLM')?.balance ?? null;
   const amountTouched = amount.length > 0;
   const amountError = validateAmount(amount, xlmBalance !== null ? parseFloat(xlmBalance) : null);
@@ -67,6 +86,7 @@ function App() {
 
   const sendPayment = async () => {
     if (!account || !recipientValid || !amountValid) return;
+    setLoading('send');
     try {
       const { data } = await axios.post('/api/stellar/payment/send', {
         sourceSecret: account.secretKey,
@@ -78,91 +98,150 @@ function App() {
       checkBalance();
     } catch (error) {
       setError(error, sendPayment);
-    }
+    } finally { setLoading(''); }
   };
 
   return (
     <div className="app">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Stellar Remittance Platform</h1>
-        <span style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <motion.span
+          animate={{ opacity: [0.6, 1, 0.6] }}
+          transition={{ repeat: Infinity, duration: 2 }}
+          style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}
+        >
           <span style={{ width: 10, height: 10, borderRadius: '50%', background: STATUS_COLORS[wsStatus], display: 'inline-block' }} />
           {wsStatus}
-        </span>
+        </motion.span>
       </div>
 
-      <div className="section">
-        <button onClick={createAccount}>Create Account</button>
-        {account && (
-          <div className="account-info">
-            <p><strong>Public Key:</strong> {account.publicKey}</p>
-            <p><strong>Secret Key:</strong> {account.secretKey}</p>
-          </div>
-        )}
-      </div>
-
-      {account && (
-        <>
-          <div className="section">
-            <button onClick={checkBalance}>Check Balance</button>
-            {balance && (
-              <div style={{ marginTop: '10px' }}>
-                {balance.balances.map((b, i) => (
-                  <p key={i}>{b.asset}: {b.balance}</p>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="section">
-            <h3>Send Payment</h3>
-            <div className="input-wrap">
-              <input
-                type="text"
-                placeholder="Recipient Public Key"
-                value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
-                style={{ border: `2px solid ${recipientTouched ? (recipientValid ? '#22c55e' : '#ef4444') : '#ccc'}` }}
-              />
-              {recipientTouched && <span className="input-icon">{recipientValid ? '✅' : '❌'}</span>}
-            </div>
-            {recipientTouched && !recipientValid && (
-              <p className="field-error">Invalid Stellar address format (must start with G and be 56 characters)</p>
-            )}
-            <div className="input-wrap">
-              <input
-                type="text"
-                placeholder="Amount (XLM)"
-                value={amount}
-                onChange={(e) => setAmount(formatAmount(e.target.value))}
-                style={{ border: `2px solid ${amountTouched ? (amountValid ? '#22c55e' : '#ef4444') : '#ccc'}` }}
-              />
-              {amountTouched && <span className="input-icon">{amountValid ? '✅' : '❌'}</span>}
-            </div>
-            {amountTouched && amountError && <p className="field-error">{amountError}</p>}
-            <button onClick={sendPayment} disabled={!recipientValid || !amountValid}>Send</button>
-          </div>
-
-          {notifications.length > 0 && (
-            <div className="section">
-              <h3>Live Notifications</h3>
-              {notifications.map((n) => (
-                <div key={n.id} className="status-banner success" style={{ marginBottom: 6 }}>
-                  <span>{n.text}</span>
-                </div>
-              ))}
-            </div>
+      {/* Create Account */}
+      <motion.div className="section" variants={v.fadeSlide} initial="hidden" animate="visible">
+        <motion.button onClick={createAccount} {...tap} disabled={loading === 'create'}>
+          Create Account {loading === 'create' && <Spinner />}
+        </motion.button>
+        <AnimatePresence>
+          {account && (
+            <motion.div
+              className="account-info"
+              variants={v.pop}
+              initial="hidden" animate="visible" exit="exit"
+            >
+              <p><strong>Public Key:</strong> {account.publicKey}</p>
+              <p><strong>Secret Key:</strong> {account.secretKey}</p>
+            </motion.div>
           )}
-        </>
-      )}
+        </AnimatePresence>
+      </motion.div>
 
-      {status && (
-        <div className={`status-banner ${status.type}`}>
-          <span>{status.type === 'error' ? '⚠️' : '✅'}</span>
-          <span className="msg">{status.message}</span>
-          {status.retry && <button onClick={status.retry}>Retry</button>}
-        </div>
-      )}
+      <AnimatePresence>
+        {account && (
+          <motion.div variants={v.stagger} initial="hidden" animate="visible" exit="exit">
+
+            {/* Balance */}
+            <motion.div className="section" variants={v.fadeSlide}>
+              <motion.button onClick={checkBalance} {...tap} disabled={loading === 'balance'}>
+                Check Balance {loading === 'balance' && <Spinner />}
+              </motion.button>
+              <AnimatePresence>
+                {balance && (
+                  <motion.div variants={v.pop} initial="hidden" animate="visible" exit="exit" style={{ marginTop: 10 }}>
+                    {balance.balances.map((b, i) => (
+                      <motion.p key={i} variants={v.fadeSlide}>{b.asset}: {b.balance}</motion.p>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+
+            {/* Send Payment */}
+            <motion.div className="section" variants={v.fadeSlide}>
+              <h3>Send Payment</h3>
+              <div className="input-wrap">
+                <input
+                  type="text"
+                  placeholder="Recipient Public Key"
+                  value={recipient}
+                  onChange={(e) => setRecipient(e.target.value)}
+                  style={{ border: `2px solid ${recipientTouched ? (recipientValid ? '#22c55e' : '#ef4444') : '#ccc'}` }}
+                />
+                {recipientTouched && <span className="input-icon">{recipientValid ? '✅' : '❌'}</span>}
+              </div>
+              <AnimatePresence>
+                {recipientTouched && !recipientValid && (
+                  <motion.p className="field-error" variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
+                    Invalid Stellar address format (must start with G and be 56 characters)
+                  </motion.p>
+                )}
+              </AnimatePresence>
+              <div className="input-wrap">
+                <input
+                  type="text"
+                  placeholder="Amount (XLM)"
+                  value={amount}
+                  onChange={(e) => setAmount(formatAmount(e.target.value))}
+                  style={{ border: `2px solid ${amountTouched ? (amountValid ? '#22c55e' : '#ef4444') : '#ccc'}` }}
+                />
+                {amountTouched && <span className="input-icon">{amountValid ? '✅' : '❌'}</span>}
+              </div>
+              <AnimatePresence>
+                {amountTouched && amountError && (
+                  <motion.p className="field-error" variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
+                    {amountError}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+              <motion.button onClick={sendPayment} {...tap} disabled={!recipientValid || !amountValid || loading === 'send'}>
+                Send {loading === 'send' && <Spinner />}
+              </motion.button>
+            </motion.div>
+
+            {/* Live Notifications */}
+            <AnimatePresence>
+              {notifications.length > 0 && (
+                <motion.div className="section" variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
+                  <h3>Live Notifications</h3>
+                  <AnimatePresence initial={false}>
+                    {notifications.map((n) => (
+                      <motion.div
+                        key={n.id}
+                        className="status-banner success"
+                        variants={v.pop}
+                        initial="hidden" animate="visible" exit="exit"
+                        style={{ marginBottom: 6 }}
+                        drag="x"
+                        dragConstraints={{ left: 0, right: 0 }}
+                        onDragEnd={(_, info) => {
+                          if (Math.abs(info.offset.x) > 80)
+                            setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+                        }}
+                      >
+                        <span>{n.text}</span>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Status Banner */}
+      <AnimatePresence>
+        {status && (
+          <motion.div
+            className={`status-banner ${status.type}`}
+            variants={v.pop}
+            initial="hidden" animate="visible" exit="exit"
+          >
+            <span>{status.type === 'error' ? '⚠️' : '✅'}</span>
+            <span className="msg">{status.message}</span>
+            {status.retry && <motion.button onClick={status.retry} {...tap}>Retry</motion.button>}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
