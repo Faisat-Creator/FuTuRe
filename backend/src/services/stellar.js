@@ -125,6 +125,77 @@ export async function sendPayment(sourceSecret, destination, amount, assetCode =
   };
 }
 
+export async function getTransactions(publicKey, { cursor, limit = 10, type, dateFrom, dateTo } = {}) {
+  let builder = server.transactions().forAccount(publicKey).order('desc').limit(limit);
+  if (cursor) builder = builder.cursor(cursor);
+
+  const page = await builder.call();
+
+  let records = await Promise.all(
+    page.records.map(async (tx) => {
+      const ops = await tx.operations();
+      const op = ops.records[0];
+      const opType = op?.type ?? 'unknown';
+      const amount = op?.amount ?? null;
+      const asset = op?.asset_type === 'native' ? 'XLM'
+        : op?.asset_code ? `${op.asset_code}` : null;
+      const counterparty = opType === 'payment'
+        ? (op.from === publicKey ? op.to : op.from)
+        : null;
+      const direction = opType === 'payment'
+        ? (op.from === publicKey ? 'sent' : 'received')
+        : null;
+
+      return {
+        id: tx.id,
+        hash: tx.hash,
+        type: opType,
+        direction,
+        amount,
+        asset,
+        counterparty,
+        date: tx.created_at,
+        fee: tx.fee_charged,
+        successful: tx.successful,
+        memo: tx.memo ?? null,
+        cursor: tx.paging_token,
+      };
+    })
+  );
+
+  if (type) records = records.filter(r => r.type === type);
+  if (dateFrom) records = records.filter(r => new Date(r.date) >= new Date(dateFrom));
+  if (dateTo) records = records.filter(r => new Date(r.date) <= new Date(dateTo));
+
+  return {
+    records,
+    nextCursor: page.records.length === limit ? page.records[page.records.length - 1].paging_token : null,
+  };
+}
+
+export async function getFeeStats() {
+  const stats = await server.feeStats();
+  const feeStroops = parseInt(stats.fee_charged?.p50 ?? StellarSDK.BASE_FEE);
+  const feeXLM = feeStroops / 1e7;
+
+  // Fetch XLM/USD price via Stellar SDEX (XLM/USDC order book)
+  let xlmUsd = null;
+  try {
+    const usdc = new StellarSDK.Asset('USDC', 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN');
+    const book = await server.orderbook(StellarSDK.Asset.native(), usdc).limit(1).call();
+    const ask = parseFloat(book.asks?.[0]?.price);
+    if (ask > 0) xlmUsd = ask;
+  } catch (_) {}
+
+  const feeUsd = xlmUsd ? feeXLM * xlmUsd : null;
+
+  return {
+    feeStroops,
+    feeXLM: feeXLM.toFixed(7),
+    feeUsd: feeUsd ? feeUsd.toFixed(6) : null,
+    xlmUsd: xlmUsd ? xlmUsd.toFixed(4) : null,
+    // Traditional wire transfer benchmark for comparison
+    traditionalFeeUsd: 25,
 export async function getTransactionHistory(publicKey, { limit = 10, cursor } = {}) {
   let call = server.transactions().forAccount(publicKey).limit(limit).order('desc');
   if (cursor) call = call.cursor(cursor);

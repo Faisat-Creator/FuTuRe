@@ -162,6 +162,30 @@ router.post('/payment/send', rules.sendPayment, validate, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+router.get('/account/:publicKey/transactions', rules.publicKeyParam, validate, async (req, res) => {
+  try {
+    const { cursor, limit, type, dateFrom, dateTo } = req.query;
+    const result = await StellarService.getTransactions(req.params.publicKey, {
+      cursor,
+      limit: limit ? Math.min(parseInt(limit), 50) : 10,
+      type,
+      dateFrom,
+      dateTo,
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/fee-stats', async (req, res) => {
+  try {
+    res.json(await StellarService.getFeeStats());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/exchange-rate/:from/:to', rules.assetCodeParams, validate, async (req, res) => {
   try {
     const rate = await StellarService.getExchangeRate(req.params.from, req.params.to);
