@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+.codex
 .DS_Store
 *.log
 logs/
