@@ -3,7 +3,37 @@ import { eventMonitor } from '../eventSourcing/index.js';
 import { getConfig } from '../config/env.js';
 import logger from '../config/logger.js';
 import prisma from '../db/client.js';
-import { getConfig } from '../config/env.js';
+
+// In-memory fee bump usage stats for admin dashboard
+const feeBumpStats = { total: 0, totalFeeStroops: 0, accounts: new Set() };
+
+export function getFeeBumpStats() {
+  return {
+    total: feeBumpStats.total,
+    totalFeeStroops: feeBumpStats.totalFeeStroops,
+    uniqueAccounts: feeBumpStats.accounts.size,
+  };
+}
+
+/**
+ * Wraps an inner transaction with a FeeBumpTransaction so the platform
+ * account pays the fee instead of the buyer.
+ */
+export function wrapWithFeeBump(innerTx, feeAccountSecret) {
+  const feeKeypair = StellarSDK.Keypair.fromSecret(feeAccountSecret);
+  const networkPassphrase = isTestnet()
+    ? StellarSDK.Networks.TESTNET
+    : StellarSDK.Networks.PUBLIC;
+
+  const feeBumpTx = StellarSDK.TransactionBuilder.buildFeeBumpTransaction(
+    feeKeypair,
+    StellarSDK.BASE_FEE * 10, // fee bump pays 10x base fee
+    innerTx,
+    networkPassphrase
+  );
+  feeBumpTx.sign(feeKeypair);
+  return feeBumpTx;
+}
 
 let horizonServerUrl;
 let horizonServer;
@@ -80,7 +110,6 @@ export async function sendPayment(sourceSecret, destination, amount, assetCode =
   logger.info('stellar.sendPayment.start', { source: sourcePublicKey, destination, amount, assetCode });
 
   const sourceAccount = await getHorizonServer().loadAccount(sourcePublicKey);
-  const sourceAccount = await server.loadAccount(sourcePublicKey);
   
   if (assetCode !== 'XLM' && !assetIssuer) {
     throw new Error('ASSET_ISSUER is required for non-XLM payments');
@@ -106,10 +135,33 @@ export async function sendPayment(sourceSecret, destination, amount, assetCode =
   
   transaction.sign(sourceKeypair);
 
+  // Fee bump: wrap if buyer XLM balance is below threshold and platform key is configured
+  const platformFeeSecret = process.env.PLATFORM_FEE_ACCOUNT_SECRET;
+  const feeBumpThreshold = parseFloat(process.env.FEE_BUMP_THRESHOLD_XLM ?? '2');
+  let txToSubmit = transaction;
+  let usedFeeBump = false;
+
+  if (platformFeeSecret) {
+    const xlmBalance = sourceAccount.balances.find(b => b.asset_type === 'native');
+    const xlmAmount = parseFloat(xlmBalance?.balance ?? '0');
+    if (xlmAmount < feeBumpThreshold) {
+      txToSubmit = wrapWithFeeBump(transaction, platformFeeSecret);
+      usedFeeBump = true;
+      logger.info('stellar.feeBump.applied', {
+        source: sourcePublicKey,
+        xlmBalance: xlmAmount,
+        threshold: feeBumpThreshold,
+      });
+      // Track stats for cost monitoring
+      feeBumpStats.total += 1;
+      feeBumpStats.totalFeeStroops += StellarSDK.BASE_FEE * 10;
+      feeBumpStats.accounts.add(sourcePublicKey);
+    }
+  }
+
   let result;
   try {
-    result = await getHorizonServer().submitTransaction(transaction);
-    result = await server.submitTransaction(transaction);
+    result = await getHorizonServer().submitTransaction(txToSubmit);
   } catch (err) {
     logger.error('stellar.sendPayment.failed', { source: sourcePublicKey, destination, amount, assetCode, error: err.message });
     throw err;
@@ -122,11 +174,12 @@ export async function sendPayment(sourceSecret, destination, amount, assetCode =
     assetCode,
     hash: result.hash,
     ledger: result.ledger,
+    feeBump: usedFeeBump,
   });
 
   await eventMonitor.publishEvent(sourcePublicKey, {
     type: 'PaymentSent',
-    data: { destination, amount, hash: result.hash },
+    data: { destination, amount, hash: result.hash, feeBump: usedFeeBump },
     version: 1
   });
 
@@ -152,7 +205,8 @@ export async function sendPayment(sourceSecret, destination, amount, assetCode =
   return {
     hash: result.hash,
     ledger: result.ledger,
-    success: result.successful
+    success: result.successful,
+    feeBump: usedFeeBump,
   };
 }
 
