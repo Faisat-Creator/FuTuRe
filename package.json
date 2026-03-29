@@ -22,6 +22,13 @@
     "test:ui": "vitest --ui",
     "test:parallel": "vitest run --workers 4",
     "test:mobile": "cd mobile-tests && node run-tests.js",
+    "test:mutation": "stryker run",
+    "test:mutation:track": "node mutation-reports/tracker.js",
+    "test:mutation:ci": "npm run test:mutation && npm run test:mutation:track"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^9.6.0",
+    "@stryker-mutator/vitest-runner": "^9.6.0",
     "test:environments": "vitest run --config vitest.environments.config.js",
     "env:provision": "node test-environments/cli.js provision",
     "env:status": "node test-environments/cli.js status",

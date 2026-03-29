@@ -5,5 +5,8 @@ dist/
 .DS_Store
 *.log
 logs/
+mutation-reports/mutation-report.html
+mutation-reports/mutation-report.json
+.stryker-tmp/
 backups/
 coverage/
