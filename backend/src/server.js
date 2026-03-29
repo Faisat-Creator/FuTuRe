@@ -34,6 +34,7 @@ import { auditLogger } from './security/index.js';
 import { getConfig } from './config/env.js';
 import { createRateLimiter } from './middleware/rateLimiter.js';
 import { performanceMiddleware } from './monitoring/middleware.js';
+import { cdnMiddleware } from './cdn/index.js';
 import {
   requestIdMiddleware,
   errorLogger,
@@ -72,6 +73,8 @@ app.use(createRateLimiter());
 // Performance monitoring
 app.use(performanceMiddleware);
 
+// CDN cache-control and security headers
+app.use(cdnMiddleware);
 // Input sanitization (runs before all route handlers)
 app.use(sanitizeInputs);
 
