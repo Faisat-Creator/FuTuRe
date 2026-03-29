@@ -37,6 +37,14 @@ function withTimeout(promise) {
 }
 
 function App() {
+  const [account, setAccount] = useState(null);
+  const [balance, setBalance] = useState(null);
+  const [recipient, setRecipient] = useState('');
+  const [amount, setAmount] = useState('');
+  const [loading, setLoading] = useState('');
+  const [showQR, setShowQR] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showImportForm, setShowImportForm] = useState(false);
   const { account, balance, loading, recipient, amount, showQR, showImportForm, showShortcuts } = useAppState();
   const dispatch = useAppDispatch();
 
@@ -58,12 +66,12 @@ function App() {
       msg.info(text);
       if (wsMsg.balance) dispatch({ type: A.SET_BALANCE, payload: { balances: wsMsg.balance } });
     }
+  }, [msg]);
   }, [msg, dispatch]);
 
   const wsStatus = useWebSocket(account?.publicKey ?? null, handleWsMessage);
   const { status: networkStatus } = useNetworkStatus();
 
-  // Global keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
@@ -83,10 +91,12 @@ function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
   }, [loading, showShortcuts]);
 
   const resetForm = () => dispatch({ type: A.RESET_FORM });
 
+  const resetForm = () => { setRecipient(''); setAmount(''); };
   const clearForm = () => {
     if ((recipient || amount) && !window.confirm('Clear the payment form?')) return;
     resetForm();
@@ -169,17 +179,17 @@ function App() {
   };
 
   return (
-    <div className="app">
-      {/* PWA: update available banner */}
-      <AnimatePresence>
-        {updateAvailable && (
-          <motion.div className="pwa-banner pwa-banner--update" variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
-            <span>A new version is available.</span>
-            <button type="button" className="pwa-banner__btn" onClick={applyUpdate}>Update now</button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <>
+      {/* Skip navigation link */}
+      <a href="#main-content" className="skip-link">Skip to main content</a>
 
+      <div className="app">
+        {/* Screen-reader live region for loading states */}
+        <div aria-live="polite" aria-atomic="true" className="sr-only">
+          {loading === 'create' && 'Creating account…'}
+          {loading === 'balance' && 'Checking balance…'}
+          {loading === 'send' && 'Sending payment…'}
+          {loading === 'import' && 'Importing account…'}
       {/* PWA: offline queue indicator */}
       <AnimatePresence>
         {pendingCount > 0 && (
@@ -225,8 +235,16 @@ function App() {
             {wsStatus}
           </motion.span>
         </div>
-      </div>
 
+        {/* PWA banners */}
+        <AnimatePresence>
+          {updateAvailable && (
+            <motion.div className="pwa-banner pwa-banner--update" role="status" variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
+              <span>A new version is available.</span>
+              <button type="button" className="pwa-banner__btn" onClick={applyUpdate}>Update now</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       {/* Keyboard shortcuts panel */}
       <AnimatePresence>
         {showShortcuts && (
@@ -262,12 +280,79 @@ function App() {
           </motion.button>
         </div>
         <AnimatePresence>
-          {showImportForm && (
-            <motion.div variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
-              <ImportAccountForm onImport={importAccount} loading={loading} />
+          {pendingCount > 0 && (
+            <motion.div className="pwa-banner pwa-banner--queue" role="status" variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
+              {pendingCount} payment{pendingCount > 1 ? 's' : ''} queued offline — will sync when back online.
             </motion.div>
           )}
         </AnimatePresence>
+
+        <header>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h1>Stellar Remittance Platform</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                className="theme-toggle-btn"
+                onClick={toggleTheme}
+                aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+                title={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+              >
+                {isDark ? '☀️ Light' : '🌙 Dark'}
+              </button>
+              {canInstall && (
+                <button type="button" className="pwa-install-btn" onClick={install} aria-label="Install app">
+                  ⬇ Install
+                </button>
+              )}
+              <button
+                type="button"
+                className="shortcuts-help-btn"
+                onClick={() => setShowShortcuts((s) => !s)}
+                aria-label="Show keyboard shortcuts"
+                aria-expanded={showShortcuts}
+                aria-controls="shortcuts-panel"
+              >
+                ⌨
+              </button>
+              <NetworkBadge status={networkStatus} />
+              <motion.span
+                animate={{ opacity: [0.6, 1, 0.6] }}
+                transition={{ repeat: Infinity, duration: 2 }}
+                style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}
+                aria-label={`WebSocket status: ${wsStatus}`}
+                role="status"
+              >
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: STATUS_COLORS[wsStatus], display: 'inline-block' }} aria-hidden="true" />
+                <span aria-hidden="true">{wsStatus}</span>
+              </motion.span>
+            </div>
+          </div>
+        </header>
+
+        {/* Keyboard shortcuts panel */}
+        <AnimatePresence>
+          {showShortcuts && (
+            <motion.div
+              id="shortcuts-panel"
+              className="shortcuts-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="shortcuts-title"
+              variants={v.pop} initial="hidden" animate="visible" exit="exit"
+            >
+              <div className="shortcuts-panel__header">
+                <strong id="shortcuts-title">Keyboard Shortcuts</strong>
+                <button type="button" className="qr-close" onClick={() => setShowShortcuts(false)} aria-label="Close keyboard shortcuts">✕</button>
+              </div>
+              <ul className="shortcuts-list">
+                <li><kbd>Ctrl+N</kbd> Create new account</li>
+                <li><kbd>Ctrl+C</kbd> Copy key (when copy button focused)</li>
+                <li><kbd>Escape</kbd> Close modals</li>
+                <li><kbd>?</kbd> Toggle this help</li>
+                <li><kbd>Tab</kbd> Navigate between fields</li>
+                <li><kbd>Enter</kbd> Submit focused form</li>
+              </ul>
         <AnimatePresence>
           {account && (
             <motion.div className="account-info" variants={v.pop} initial="hidden" animate="visible" exit="exit">
@@ -289,31 +374,39 @@ function App() {
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
 
-      <AnimatePresence>
-        {account && (
-          <motion.div variants={v.stagger} initial="hidden" animate="visible" exit="exit">
-
-            {/* Balance */}
-            <motion.div className="section" variants={v.fadeSlide}>
-              <motion.button onClick={checkBalance} {...tap} disabled={loading === 'balance'}>
-                {loading === 'balance' ? <Spinner label="Checking balance..." /> : 'Check Balance'}
+        <main id="main-content">
+          {/* Create / Import Account */}
+          <motion.section className="section" aria-labelledby="account-heading" variants={v.fadeSlide} initial="hidden" animate="visible">
+            <h2 id="account-heading" className="sr-only">Account</h2>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <motion.button
+                onClick={createAccount}
+                {...tap}
+                disabled={loading === 'create'}
+                aria-label="Create new Stellar account (Ctrl+N)"
+                aria-busy={loading === 'create'}
+              >
+                {loading === 'create' ? <Spinner label="Creating account…" /> : 'Create Account'}
               </motion.button>
-              <AnimatePresence>
-                {balance && (
-                  <motion.div variants={v.pop} initial="hidden" animate="visible" exit="exit" style={{ marginTop: 10 }}>
-                    {balance.balances.map((b, i) => (
-                      <motion.p key={i} variants={v.fadeSlide} className="balance-row">
-                        <span className="balance-asset">{b.asset}</span>
-                        <span className="balance-amount">{formatBalanceWithAsset(b.balance, b.asset)}</span>
-                      </motion.p>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
+              <motion.button
+                onClick={() => setShowImportForm((s) => !s)}
+                {...tap}
+                style={{ background: '#6366f1' }}
+                aria-expanded={showImportForm}
+                aria-controls="import-form"
+              >
+                {showImportForm ? 'Cancel Import' : 'Import Account'}
+              </motion.button>
+            </div>
 
+            <AnimatePresence>
+              {showImportForm && (
+                <motion.div id="import-form" variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
+                  <ImportAccountForm onImport={importAccount} loading={loading} />
+                </motion.div>
+              )}
+            </AnimatePresence>
             {/* Send Payment */}
             <motion.div className="section" variants={v.fadeSlide}>
               <ErrorBoundary context="send-payment">
@@ -373,23 +466,169 @@ function App() {
               </ErrorBoundary>
             </motion.div>
 
-            {/* Transaction History */}
-            <motion.div variants={v.fadeSlide}>
-              <TransactionHistory publicKey={account.publicKey} />
-            </motion.div>
+            <AnimatePresence>
+              {account && (
+                <motion.div className="account-info" variants={v.pop} initial="hidden" animate="visible" exit="exit" aria-label="Account details">
+                  <div className="key-row">
+                    <span className="key-label" id="pubkey-label">Public Key:</span>
+                    <span className="key-value" aria-labelledby="pubkey-label">{account.publicKey}</span>
+                    <CopyButton text={account.publicKey} label="Copy public key" />
+                  </div>
+                  <div className="key-row">
+                    <span className="key-label" id="seckey-label">Secret Key:</span>
+                    <span className="key-value" aria-labelledby="seckey-label">{account.secretKey}</span>
+                    <CopyButton text={account.secretKey} label="Copy secret key" />
+                  </div>
+                  <motion.button
+                    className="qr-trigger"
+                    onClick={() => setShowQR(true)}
+                    {...tap}
+                    aria-label="Show QR code for this account"
+                  >
+                    🔲 Show QR Code
+                  </motion.button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.section>
 
-          </motion.div>
-        )}
-      </AnimatePresence>
+          <AnimatePresence>
+            {account && (
+              <motion.div variants={v.stagger} initial="hidden" animate="visible" exit="exit">
 
-      {/* Status Messages */}
-      <StatusMessage
-        messages={msg.messages}
-        history={msg.history}
-        onRemove={msg.remove}
-        showHistory={true}
-      />
+                {/* Balance */}
+                <motion.section className="section" aria-labelledby="balance-heading" variants={v.fadeSlide}>
+                  <h2 id="balance-heading" className="sr-only">Balance</h2>
+                  <motion.button
+                    onClick={checkBalance}
+                    {...tap}
+                    disabled={loading === 'balance'}
+                    aria-busy={loading === 'balance'}
+                    aria-label="Check account balance"
+                  >
+                    {loading === 'balance' ? <Spinner label="Checking balance…" /> : 'Check Balance'}
+                  </motion.button>
+                  <AnimatePresence>
+                    {balance && (
+                      <motion.div
+                        variants={v.pop} initial="hidden" animate="visible" exit="exit"
+                        style={{ marginTop: 10 }}
+                        aria-label="Account balances"
+                        role="list"
+                      >
+                        {balance.balances.map((b, i) => (
+                          <motion.p key={i} variants={v.fadeSlide} className="balance-row" role="listitem">
+                            <span className="balance-asset">{b.asset}</span>
+                            <span className="balance-amount">{formatBalanceWithAsset(b.balance, b.asset)}</span>
+                          </motion.p>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.section>
 
+                {/* Send Payment */}
+                <motion.section className="section" aria-labelledby="send-heading" variants={v.fadeSlide}>
+                  <ErrorBoundary context="send-payment">
+                    <h2 id="send-heading">Send Payment</h2>
+                    <div className="input-wrap">
+                      <label htmlFor="recipient-input" className="sr-only">Recipient public key</label>
+                      <input
+                        id="recipient-input"
+                        type="text"
+                        placeholder="Recipient Public Key"
+                        value={recipient}
+                        onChange={(e) => setRecipient(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && sendPayment()}
+                        style={{ border: `2px solid ${recipientTouched ? (recipientValid ? '#22c55e' : '#ef4444') : '#ccc'}` }}
+                        aria-label="Recipient public key"
+                        aria-invalid={recipientTouched && !recipientValid}
+                        aria-describedby={recipientTouched && !recipientValid ? 'recipient-error' : undefined}
+                        autoComplete="off"
+                      />
+                      {recipientTouched && <span className="input-icon" aria-hidden="true">{recipientValid ? '✅' : '❌'}</span>}
+                    </div>
+                    <AnimatePresence>
+                      {recipientTouched && !recipientValid && (
+                        <motion.p id="recipient-error" className="field-error" role="alert" variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
+                          Invalid Stellar address format (must start with G and be 56 characters)
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="input-wrap">
+                      <label htmlFor="amount-input" className="sr-only">Payment amount in XLM</label>
+                      <input
+                        id="amount-input"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Amount (XLM)"
+                        value={amount}
+                        onChange={(e) => setAmount(formatAmount(e.target.value))}
+                        onKeyDown={(e) => e.key === 'Enter' && sendPayment()}
+                        style={{ border: `2px solid ${amountTouched ? (amountValid ? '#22c55e' : '#ef4444') : '#ccc'}` }}
+                        aria-label="Payment amount in XLM"
+                        aria-invalid={amountTouched && !!amountError}
+                        aria-describedby={amountTouched && amountError ? 'amount-error' : undefined}
+                      />
+                      {amountTouched && <span className="input-icon" aria-hidden="true">{amountValid ? '✅' : '❌'}</span>}
+                    </div>
+                    <AnimatePresence>
+                      {amountTouched && amountError && (
+                        <motion.p id="amount-error" className="field-error" role="alert" variants={v.fadeSlide} initial="hidden" animate="visible" exit="exit">
+                          {amountError}
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
+
+                    <FeeDisplay amount={amount} visible={amountValid} />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <motion.button
+                        onClick={sendPayment}
+                        {...tap}
+                        disabled={!recipientValid || !amountValid || loading === 'send'}
+                        aria-busy={loading === 'send'}
+                        aria-label="Send XLM payment"
+                      >
+                        {loading === 'send' ? <Spinner label="Sending payment…" /> : 'Send'}
+                      </motion.button>
+                      <motion.button
+                        className="btn-clear"
+                        onClick={clearForm}
+                        {...tap}
+                        disabled={loading === 'send' || (!recipient && !amount)}
+                        aria-label="Clear payment form"
+                      >
+                        Clear
+                      </motion.button>
+                    </div>
+                  </ErrorBoundary>
+                </motion.section>
+
+                {/* Transaction History */}
+                <motion.div variants={v.fadeSlide}>
+                  <TransactionHistory publicKey={account.publicKey} />
+                </motion.div>
+
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </main>
+
+        <StatusMessage
+          messages={msg.messages}
+          history={msg.history}
+          onRemove={msg.remove}
+          showHistory={true}
+        />
+
+        <AnimatePresence>
+          {showQR && account && (
+            <QRCodeModal publicKey={account.publicKey} onClose={() => setShowQR(false)} />
+          )}
+        </AnimatePresence>
+      </div>
+    </>
       {/* QR Code Modal */}
       <AnimatePresence>
         {showQR && account && (
