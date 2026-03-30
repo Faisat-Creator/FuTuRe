@@ -303,3 +303,63 @@ describe('API response validation — shape contracts', () => {
     });
   });
 });
+
+describe('GET /api/stellar/account/:publicKey/transactions', () => {
+  it('returns paginated transactions for a funded account', async () => {
+    const res = await request(app).get(`/api/stellar/account/${sourceAccount.publicKey}/transactions`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('records');
+    expect(Array.isArray(res.body.records)).toBe(true);
+  });
+});
+
+describe('GET /api/stellar/fee-stats', () => {
+  it('returns current network fee statistics', async () => {
+    const res = await request(app).get('/api/stellar/fee-stats');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('feeStroops');
+    expect(res.body).toHaveProperty('feeXLM');
+    expect(typeof res.body.feeXLM).toBe('string');
+  });
+});
+
+describe('GET /api/stellar/assets', () => {
+  it('returns a list of supported assets and their issuers', async () => {
+    const res = await request(app).get('/api/stellar/assets');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('assets');
+    expect(Array.isArray(res.body.assets)).toBe(true);
+    expect(res.body.assets.some(a => a.code === 'XLM')).toBe(true);
+  });
+});
+
+describe('POST /api/stellar/trustline', () => {
+  it('creates a trustline for a supported non-native asset', async () => {
+    // Note: This requires the source account to have enough XLM for the reserve
+    const res = await request(app)
+      .post('/api/stellar/trustline')
+      .send({
+        sourceSecret: sourceAccount.secretKey,
+        assetCode: 'USDC'
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('hash');
+    expect(res.body.assetCode).toBe('USDC');
+  }, 45_000);
+
+  it('returns 422 for creating a trustline with XLM', async () => {
+    const res = await request(app)
+      .post('/api/stellar/trustline')
+      .send({
+        sourceSecret: sourceAccount.secretKey,
+        assetCode: 'XLM'
+      });
+
+    expect(res.status).toBe(422);
+    expect(res.body.errors[0]).toHaveProperty('field', 'assetCode');
+  });
+});

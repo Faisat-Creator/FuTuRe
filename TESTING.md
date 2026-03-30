@@ -28,12 +28,39 @@ To run tests in watch mode (best for development):
 npx vitest
 ```
 
-To run tests in watch mode:
+## 3. Integration Testing Suite
+
+We maintain a comprehensive integration testing suite that covers multiple layers:
+
+- **Service Integration**: Tests internal service logic and interactions (e.g., `TransactionService` + `Cache` + `EventStore`).
+- **Third-party Integration**: Verifies interactions with external APIs like CoinGecko and Stellar Horizon.
+- **API Integration**: End-to-end testing of REST endpoints, including authentication and validation.
+- **Database Integration**: Real Prisma/Postgres testing for data persistence and schema integrity.
+
+### Running Integration Tests
+
+To run all integration tests:
 ```bash
-npx vitest
+cd backend
+npm run test:integration:all
 ```
 
-## 3. Testing Best Practices
+### Environment Setup
+
+Database integration tests require a running Postgres instance. You can start one using Docker:
+```bash
+docker-compose -f docker-compose.test.yml up -d
+```
+Then, ensure your `DATABASE_URL` environment variable points to the test database:
+`postgresql://future_admin:test_password@localhost:5433/future_test`
+
+### Automated Testing (CI)
+
+Integration tests are automatically run on every Pull Request to `main` or `master` via GitHub Actions. The CI environment handles the database setup and migration automatically.
+
+---
+
+## 4. Testing Best Practices
 
 - **AAA Pattern**: Follow the **Arrange, Act, Assert** structure for all tests.
 - **Isolation**: Each test should be independent. Do not rely on the state from a previous test.
@@ -64,6 +91,7 @@ describe('formatAmount', () => {
 - **Mocks**: Use the `vi.mock()` function from Vitest to simulate Stellar SDK responses.
 - **Fixtures**: Store common test data (e.g., sample public keys) in a dedicated `tests/fixtures` directory if they are used across multiple tests.
 - **Environment**: Use a `.env.test` file for test-specific configurations.
+- **Privacy**: Use synthetic data only. Run `npm run test:privacy` (already part of `npm test`) and use helpers in `testing/privacy.js` to generate and redact sensitive values.
 
 ## 6. Troubleshooting Guide
 
