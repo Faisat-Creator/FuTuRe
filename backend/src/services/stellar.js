@@ -223,6 +223,15 @@ export async function createTrustline(sourceSecret, assetCode) {
   logger.info('stellar.createTrustline', { publicKey: sourcePublicKey, assetCode });
 
   const sourceAccount = await getHorizonServer().loadAccount(sourcePublicKey);
+
+  const alreadyTrusted = sourceAccount.balances.some(
+    b => b.asset_code === assetCode && b.asset_issuer === issuer
+  );
+  if (alreadyTrusted) {
+    logger.info('stellar.createTrustline.exists', { publicKey: sourcePublicKey, assetCode });
+    return { alreadyExists: true, assetCode, issuer };
+  }
+
   const asset = new StellarSDK.Asset(assetCode, issuer);
 
   const transaction = new StellarSDK.TransactionBuilder(sourceAccount, {
