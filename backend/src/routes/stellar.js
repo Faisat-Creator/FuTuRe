@@ -137,8 +137,8 @@ router.get('/account/:publicKey', rules.publicKeyParam, validate,
  */
 router.post('/payment/send', rules.sendPayment, validate, async (req, res) => {
   try {
-    const { sourceSecret, destination, amount, assetCode, memo } = req.body;
-    const result = await StellarService.sendPayment(sourceSecret, destination, amount, assetCode, memo);
+    const { sourceSecret, destination, amount, assetCode, memo, memoType } = req.body;
+    const result = await StellarService.sendPayment(sourceSecret, destination, amount, assetCode, memo, memoType);
 
     const notification = { type: 'transaction', hash: result.hash, amount, assetCode: assetCode || 'XLM', timestamp: Date.now() };
 
@@ -201,7 +201,7 @@ router.post('/payment/send', rules.sendPayment, validate, async (req, res) => {
  */
 router.get('/account/:publicKey/transactions', rules.publicKeyParam, validate, async (req, res) => {
   try {
-    const { cursor, limit, type, dateFrom, dateTo } = req.query;
+    const { cursor, limit, type, dateFrom, dateTo, hash } = req.query;
     const result = await StellarService.getTransactions(req.params.publicKey, {
       cursor,
       limit: limit ? Math.min(parseInt(limit), 50) : 10,
@@ -209,6 +209,10 @@ router.get('/account/:publicKey/transactions', rules.publicKeyParam, validate, a
       dateFrom,
       dateTo,
     });
+    if (hash) {
+      const prefix = hash.toLowerCase();
+      result.records = result.records.filter(tx => tx.hash?.toLowerCase().startsWith(prefix));
+    }
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
