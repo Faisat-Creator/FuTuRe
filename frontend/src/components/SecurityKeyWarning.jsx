@@ -7,15 +7,6 @@ import { motion, AnimatePresence } from 'framer-motion';
  * Props: onAcknowledge
  */
 export function SecurityKeyWarning({ onAcknowledge }) {
-  const [copied, setCopied] = useState(null);
-
-  const handleCopy = (text, label) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(label);
-      setTimeout(() => setCopied(null), 2000);
-    });
-  };
-
   return (
     <motion.div
       className="security-warning"
