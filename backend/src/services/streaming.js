@@ -3,8 +3,19 @@ import prisma from '../db/client.js';
 import { sendPayment } from './stellar.js';
 import { eventMonitor } from '../eventSourcing/index.js';
 import logger from '../config/logger.js';
+import { encryptToEnvValue, decryptFromEnvValue } from '../config/secrets.js';
 
-export async function createStream({ senderPublicKey, recipientPublicKey, assetCode, rateAmount, intervalSeconds = 60, endTime, metadata }) {
+function getStreamEncryptionKey() {
+  const key = process.env.STREAM_SECRET_ENCRYPTION_KEY;
+  if (!key) throw new Error('STREAM_SECRET_ENCRYPTION_KEY is not set');
+  return key;
+}
+
+export async function createStream({ senderPublicKey, senderSecret, recipientPublicKey, assetCode, rateAmount, intervalSeconds = 60, endTime, metadata }) {
+  if (!senderSecret) throw new Error('senderSecret is required to create a stream');
+
+  const encryptedSecret = encryptToEnvValue(senderSecret, getStreamEncryptionKey());
+
   // Ensure users exist
   const [sender, recipient] = await Promise.all([
     prisma.user.upsert({ where: { publicKey: senderPublicKey }, update: {}, create: { publicKey: senderPublicKey } }),
@@ -21,6 +32,7 @@ export async function createStream({ senderPublicKey, recipientPublicKey, assetC
       endTime: endTime ? new Date(endTime) : null,
       metadata: metadata || {},
       status: 'ACTIVE',
+      senderSecret: encryptedSecret,
     },
   });
 
@@ -119,12 +131,7 @@ export async function getStreamAnalytics() {
   };
 }
 
-export async function processActiveStreams(sourceSecret) {
-  if (!sourceSecret) {
-    logger.warn('streaming.worker.skip', { reason: 'No sourceSecret provided' });
-    return;
-  }
-
+export async function processActiveStreams() {
   const now = new Date();
   const activeStreams = await prisma.paymentStream.findMany({
     where: {
@@ -145,9 +152,14 @@ export async function processActiveStreams(sourceSecret) {
 
     if (secondsSinceLast >= stream.intervalSeconds) {
        try {
-         // Execute payment on Stellar
+         if (!stream.senderSecret) {
+           throw new Error('Stream has no senderSecret — cannot sign transaction');
+         }
+         const senderSecret = decryptFromEnvValue(stream.senderSecret, getStreamEncryptionKey());
+
+         // Execute payment on Stellar using the actual sender's secret
          const result = await sendPayment(
-           sourceSecret, 
+           senderSecret,
            stream.recipient.publicKey, 
            stream.rateAmount.toString(), 
            stream.assetCode
