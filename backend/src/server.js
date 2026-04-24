@@ -146,10 +146,7 @@ httpServer.listen(PORT, () => {
   const STREAM_INTERVAL = 60 * 1000; // Check every minute
   setInterval(async () => {
     try {
-      const workerSecret = process.env.STREAM_WORKER_SECRET;
-      if (workerSecret) {
-        await processActiveStreams(workerSecret);
-      }
+      await processActiveStreams();
     } catch (err) {
       logger.error('streaming.worker.failed', { error: err.message });
     }

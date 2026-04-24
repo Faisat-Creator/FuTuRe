@@ -84,6 +84,7 @@ model PaymentStream {
   status          StreamStatus @default(ACTIVE)
   failureCount    Int          @default(0)
   metadata        Json?
+  senderSecret    String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -152,6 +153,14 @@ model AMLAlert {
   riskScore     Int
   riskLevel     String
   createdAt     DateTime    @default(now())
+}
+
+model FeeBumpStat {
+  id              String   @id @default("singleton")
+  total           Int      @default(0)
+  totalFeeStroops BigInt   @default(0)
+  accounts        Json     @default("[]")
+  updatedAt       DateTime @updatedAt
 }
 
 model PendingMultiSigTx {
