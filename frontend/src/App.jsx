@@ -189,6 +189,14 @@ function App() {
   const amountError = validateAmount(amount, xlmBalance !== null ? parseFloat(xlmBalance) : null);
   const amountValid = amountTouched && !amountError;
 
+  const handleSendMax = () => {
+    if (xlmBalance === null) return;
+    const BASE_FEE_XLM = 0.00001;
+    const MINIMUM_RESERVE_XLM = 1;
+    const maxSendable = Math.max(0, parseFloat(xlmBalance) - MINIMUM_RESERVE_XLM - BASE_FEE_XLM);
+    setAmount(maxSendable.toFixed(7).replace(/\.?0+$/, ''));
+  };
+
   const sendPayment = async () => {
     if (!account || !recipientValid || !amountValid) return;
     setLoading('send');
@@ -635,6 +643,17 @@ function App() {
                         aria-describedby={amountTouched && amountError ? 'amount-error' : undefined}
                       />
                       {amountTouched && <span className="input-icon" aria-hidden="true">{amountValid ? '✅' : '❌'}</span>}
+                      <motion.button
+                        type="button"
+                        className="btn-send-max"
+                        onClick={handleSendMax}
+                        {...tap}
+                        disabled={xlmBalance === null || loading === 'send'}
+                        title="Send maximum available amount (balance - 1 XLM reserve - fee)"
+                        aria-label="Send maximum available amount"
+                      >
+                        Max
+                      </motion.button>
                     </div>
                     <AnimatePresence>
                       {amountTouched && amountError && (

@@ -133,6 +133,33 @@ button:disabled {
   background: var(--card);
 }
 
+.btn-send-max {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: auto;
+  min-width: 50px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: #6366f1;
+  border: 1px solid #4f46e5;
+  color: white;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-send-max:hover:not(:disabled) {
+  background: #4f46e5;
+}
+
+.btn-send-max:disabled {
+  background: #a5a5a5;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Inputs */
 input {
   border: 1px solid var(--border);
@@ -165,7 +192,7 @@ input:focus {
 
 /* Validated input wrapper */
 .input-wrap { position: relative; margin-bottom: 4px; }
-.input-wrap input { margin-bottom: 0; }
+.input-wrap input { margin-bottom: 0; padding-right: 60px; }
 .input-icon {
   position: absolute;
   right: 10px;
