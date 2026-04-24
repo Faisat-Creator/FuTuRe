@@ -1,4 +1,5 @@
 import express from 'express';
+import { body } from 'express-validator';
 import * as StellarSDK from '@stellar/stellar-sdk';
 import * as StellarService from '../services/stellar.js';
 import * as AMMService from '../services/amm.js';
@@ -9,6 +10,7 @@ import { SUPPORTED_ASSETS, getIssuer } from '../config/assets.js';
 import { dispatchEvent } from '../webhooks/dispatcher.js';
 import { cacheMiddleware } from '../middleware/cache.js';
 import { keys as cacheKeys, TTL, invalidateBalance } from '../cache/appCache.js';
+import prisma from '../db/client.js';
 
 const router = express.Router();
 
@@ -345,6 +347,41 @@ router.post('/trustline', rules.createTrustline, validate, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+router.get('/account/:publicKey/label', rules.publicKeyParam, validate, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { publicKey: req.params.publicKey },
+      include: { settings: true },
+    });
+    res.json({ accountLabel: user?.settings?.accountLabel ?? null });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/account/:publicKey/label', rules.publicKeyParam, validate,
+  body('accountLabel').trim().isLength({ max: 50 }).withMessage('Label must be 50 characters or fewer'),
+  validate,
+  async (req, res) => {
+    try {
+      const { accountLabel } = req.body;
+      const user = await prisma.user.upsert({
+        where: { publicKey: req.params.publicKey },
+        update: {},
+        create: { publicKey: req.params.publicKey },
+      });
+      await prisma.setting.upsert({
+        where: { userId: user.id },
+        update: { accountLabel: accountLabel || null },
+        create: { userId: user.id, accountLabel: accountLabel || null },
+      });
+      res.json({ accountLabel: accountLabel || null });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
 
 export default router;
 

@@ -57,6 +57,7 @@ model Setting {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   defaultAsset    String   @default("XLM")
   notificationsOn Boolean  @default(true)
+  accountLabel    String?
   updatedAt       DateTime @updatedAt
 }
 

@@ -15,6 +15,8 @@ export const A = {
   SET_SHOW_QR: 'SET_SHOW_QR',
   SET_SHOW_IMPORT: 'SET_SHOW_IMPORT',
   SET_SHOW_SHORTCUTS: 'SET_SHOW_SHORTCUTS',
+  // Label
+  SET_LABEL: 'SET_LABEL',
 };
 
 // ── Initial state ─────────────────────────────────────────────────────────────
@@ -31,6 +33,7 @@ export const initialState = {
   showQR: false,
   showImportForm: false,
   showShortcuts: false,
+  accountLabel: '',    // human-readable nickname
 };
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
@@ -39,7 +42,7 @@ export function appReducer(state, action) {
     case A.SET_ACCOUNT:
       return { ...state, account: action.payload };
     case A.CLEAR_ACCOUNT:
-      return { ...state, account: null, balance: null };
+      return { ...state, account: null, balance: null, accountLabel: '' };
     case A.SET_BALANCE:
       return { ...state, balance: action.payload, _prevBalance: null };
     case A.SET_BALANCE_OPTIMISTIC:
@@ -60,6 +63,8 @@ export function appReducer(state, action) {
       return { ...state, showImportForm: action.payload };
     case A.SET_SHOW_SHORTCUTS:
       return { ...state, showShortcuts: action.payload };
+    case A.SET_LABEL:
+      return { ...state, accountLabel: action.payload };
     default:
       return state;
   }
