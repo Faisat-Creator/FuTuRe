@@ -36,6 +36,10 @@ export const rules = {
       .withMessage(`Memo exceeds ${MAX_LENGTHS.memo} characters`)
       .customSanitizer(v => sanitizeText(v, MAX_LENGTHS.memo)),
 
+  publicKeyBody: body('publicKey')
+    .trim()
+    .matches(STELLAR_PUBLIC_KEY)
+    .withMessage('Invalid Stellar public key'),
   memoTypeField: () =>
     body('memoType')
       .optional()
