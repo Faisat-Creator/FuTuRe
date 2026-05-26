@@ -3,6 +3,12 @@ import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Spinner } from './Spinner';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { CopyButton } from './CopyButton';
+
+function truncateKey(key) {
+  if (!key || key.length <= 8) return key;
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
 
 const TYPE_LABELS = { payment: 'Payment', create_account: 'Account Created', unknown: 'Other' };
 const PAGE_SIZE = 10;
@@ -130,7 +136,15 @@ function TxModal({ tx, onClose }) {
           <dt>Type</dt><dd>{TYPE_LABELS[tx.type] ?? tx.type}</dd>
           {tx.direction && <><dt>Direction</dt><dd>{tx.direction}</dd></>}
           {tx.amount && <><dt>Amount</dt><dd>{tx.amount} {tx.asset}</dd></>}
-          {tx.counterparty && <><dt>Counterparty</dt><dd className="tx-hash">{tx.counterparty}</dd></>}
+          {tx.counterparty && (
+            <>
+              <dt>Counterparty</dt>
+              <dd className="tx-hash" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span title={tx.counterparty}>{truncateKey(tx.counterparty)}</span>
+                <CopyButton text={tx.counterparty} label="Copy counterparty address" />
+              </dd>
+            </>
+          )}
           <dt>Date</dt><dd>{fmt(tx.date)}</dd>
           <dt>Fee</dt><dd>{tx.fee} stroops</dd>
           {tx.memo && <><dt>Memo</dt><dd>{tx.memo}</dd></>}
