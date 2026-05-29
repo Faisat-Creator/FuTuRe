@@ -9,7 +9,6 @@ import { connectDB, checkDBHealth, disconnectDB } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import stellarRoutes from './routes/stellar.js';
 import multiSigRoutes from './routes/multiSig.js';
-import { expireStaleTransactions } from './services/multiSig.js';
 import authRoutes from './routes/auth.js';
 import { initWebSocket } from './services/websocket.js';
 import eventsRoutes from './routes/events.js';
@@ -26,12 +25,10 @@ import complianceRoutes from './routes/compliance.js';
 import pathPaymentRoutes from './routes/pathPayment.js';
 import analyticsRoutes from './routes/analytics.js';
 import backupRoutes from './routes/backup.js';
-import { startScheduler } from './backup/manager.js';
 import cacheRoutes from './routes/cache.js';
 import recoveryRoutes from './routes/recovery.js';
 import { eventMonitor } from './eventSourcing/index.js';
 import streamingRoutes from './routes/streaming.js';
-import { processActiveStreams } from './services/streaming.js';
 import retryRoutes from './routes/retry.js';
 import accountsRoutes from './routes/accounts.js';
 import { auditLogger } from './security/index.js';
@@ -47,6 +44,7 @@ import {
 } from './middleware/errorHandler.js';
 import { securityMiddleware } from './middleware/securityHeaders.js';
 import { sanitizeInputs } from './middleware/sanitize.js';
+import { startScheduler, stopScheduler } from './scheduler.js';
 
 dotenv.config();
 
@@ -174,24 +172,7 @@ httpServer.listen(PORT, () => {
   }
   logger.info('server.started', { port: PORT, network: process.env.STELLAR_NETWORK });
 
-  // Start background streaming payment worker
-  const STREAM_INTERVAL = 60 * 1000; // Check every minute
-  setInterval(async () => {
-    try {
-      await processActiveStreams();
-    } catch (err) {
-      logger.error('streaming.worker.failed', { error: err.message });
-    }
-  }, STREAM_INTERVAL);
-  // Expire stale multi-sig transactions every minute
-  setInterval(async () => {
-    try {
-      const count = await expireStaleTransactions();
-      if (count > 0) logger.info('multisig.expired', { count });
-    } catch (err) {
-      logger.error('multisig.expiry.failed', { error: err.message });
-    }
-  }, 60 * 1000);
+  // Start background workers
   startScheduler();
 });
 
@@ -214,7 +195,9 @@ async function shutdown(signal) {
   forceExit.unref();
 
   try {
-    // 3. Close DB connection
+    // 3. Stop background workers
+    stopScheduler();
+    // 4. Close DB connection
     await disconnectDB();
     logger.info('server.shutdown.complete');
     clearTimeout(forceExit);
