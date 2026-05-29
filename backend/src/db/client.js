@@ -3,13 +3,14 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pkg from '@prisma/client';
 const { PrismaClient } = pkg;
 import logger from '../config/logger.js';
+import { getConfig } from '../config/env.js';
 
 const { Pool } = pg;
 
 // Connection pool — reused across all requests
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 10,
+  max: getConfig().database.poolMax,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });
