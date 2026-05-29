@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pkg from '@prisma/client';
 const { PrismaClient } = pkg;
 import logger from '../config/logger.js';
+import { getConfig } from '../config/env.js';
 import { setupSoftDeleteMiddleware } from './softDelete.js';
 
 const { Pool } = pg;
@@ -40,6 +41,8 @@ const adapterConnectionString = usePgBouncer
 
 // Connection pool — reused across all requests
 const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: getConfig().database.poolMax,
   connectionString: adapterConnectionString,
   max: parseInt(process.env.DB_POOL_MAX, 10) || 10,
   idleTimeoutMillis: 30_000,
@@ -108,6 +111,34 @@ if (queryLogEnabled) {
 setupSoftDeleteMiddleware(prisma);
 
 export async function connectDB() {
+  const maxAttempts = 5;
+  const initialDelayMs = 1000;
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await prisma.$connect();
+      logger.info('db.connected');
+      return;
+    } catch (err) {
+      if (attempt === maxAttempts) {
+        logger.error('db.connection.failed', {
+          message: err.message,
+          attempts: maxAttempts,
+        });
+        process.exit(1);
+      }
+      
+      const delayMs = initialDelayMs * Math.pow(2, attempt - 1);
+      logger.warn('db.connection.retry', {
+        attempt,
+        maxAttempts,
+        delayMs,
+        error: err.message,
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
   await baseClient.$connect();
   logger.info('db.connected');
 }

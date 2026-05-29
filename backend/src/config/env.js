@@ -292,6 +292,14 @@ export function createConfigFromEnv(env, { appEnv, nodeEnv, loadedEnvFiles } = {
   const watchFlag = parseBoolean(env.CONFIG_WATCH);
   const watchEnabled = resolvedAppEnv !== 'test' && watchFlag;
 
+  const dbPoolMax = parseInteger(env.DB_POOL_MAX, {
+    envVarName: 'DB_POOL_MAX',
+    defaultValue: 10,
+  });
+  if (!Number.isInteger(dbPoolMax) || dbPoolMax <= 0) {
+    throw new Error('DB_POOL_MAX must be a positive integer');
+  }
+
   return {
     meta: {
       schemaVersion: CONFIG_SCHEMA_VERSION,
@@ -317,6 +325,9 @@ export function createConfigFromEnv(env, { appEnv, nodeEnv, loadedEnvFiles } = {
     },
     security: {
       jwtSecret,
+    },
+    database: {
+      poolMax: dbPoolMax,
     },
   };
 }
