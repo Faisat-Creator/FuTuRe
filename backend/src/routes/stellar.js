@@ -59,7 +59,7 @@ const accountCreateRateLimiter = createRateLimiter({
 
 router.post('/account/create', accountCreateRateLimiter, async (req, res) => {
   try {
-    const account = await StellarService.createAccount();
+    const account = await StellarService.createAccount(req.correlationId);
     res.json(account);
   } catch (error) {
     logError(req, error);
@@ -83,7 +83,7 @@ router.post('/account/import', rules.importAccount, validate, async (req, res) =
     const { secretKey } = req.body;
     const keypair = StellarSDK.Keypair.fromSecret(secretKey);
     const publicKey = keypair.publicKey();
-    const balance = await StellarService.getBalance(publicKey);
+    const balance = await StellarService.getBalance(publicKey, req.correlationId);
     res.json({ publicKey, balances: balance.balances });
   } catch (error) {
     res.status(400).json({ error: 'Invalid secret key or account not found on network' });
@@ -172,13 +172,13 @@ const paymentRateLimiter = createRateLimiter({
 router.post('/payment/send', paymentRateLimiter, rules.sendPayment, validate, async (req, res) => {
   try {
     const { sourceSecret, destination, amount, assetCode, memo, memoType } = req.body;
-    const result = await StellarService.sendPayment(sourceSecret, destination, amount, assetCode, memo, memoType);
+    const result = await StellarService.sendPayment(sourceSecret, destination, amount, assetCode, memo, memoType, req.correlationId);
 
     const notification = { type: 'transaction', hash: result.hash, amount, assetCode: assetCode || 'XLM', timestamp: Date.now() };
 
     // Notify sender's updated balance + tx notification
     const senderKey = StellarSDK.Keypair.fromSecret(sourceSecret).publicKey();
-    const senderBalance = await StellarService.getBalance(senderKey);
+    const senderBalance = await StellarService.getBalance(senderKey, req.correlationId);
     broadcastToAccount(senderKey, { ...notification, direction: 'sent', balance: senderBalance.balances });
     dispatchEvent(senderKey, 'payment_sent', { hash: result.hash, amount, assetCode: assetCode || 'XLM', destination });
 
@@ -188,7 +188,7 @@ router.post('/payment/send', paymentRateLimiter, rules.sendPayment, validate, as
 
     // Notify recipient of incoming tx + updated balance
     try {
-      const recipientBalance = await StellarService.getBalance(destination);
+      const recipientBalance = await StellarService.getBalance(destination, req.correlationId);
       broadcastToAccount(destination, { ...notification, direction: 'received', balance: recipientBalance.balances });
       dispatchEvent(destination, 'payment_received', { hash: result.hash, amount, assetCode: assetCode || 'XLM', source: senderKey });
       const pushSub = getSubscriptionByPublicKey(destination);
