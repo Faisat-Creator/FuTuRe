@@ -1,3 +1,8 @@
+// Validate required environment variables before anything else renders.
+// In production this throws immediately if VITE_API_URL (or any other required
+// var) is missing, preventing a silently broken deployment.
+import './env.js';
+
 import React, { lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
