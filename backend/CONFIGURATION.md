@@ -219,3 +219,51 @@ The middleware also emits `Surrogate-Control` headers for Fastly/Varnish and `Va
 
 Query events are emitted at the `debug` log level and include the query text, bound parameters, and execution duration in milliseconds.
 
+
+## Compliance & AML Configuration
+
+### KYC enforcement
+
+Payments above `KYC_LARGE_TRANSACTION_LIMIT` XLM are blocked at `POST /api/stellar/payment/send` unless the sender has an `APPROVED` KYC record. The middleware returns `403 { error: "KYC_REQUIRED", kycStatus: "..." }`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `KYC_LARGE_TRANSACTION_LIMIT` | `1000` | XLM threshold above which KYC approval is required |
+
+### Sanctions screening (#501)
+
+Every payment screens both sender and recipient against OFAC SDN, UN, and EU sanctions lists via the configured API before the transaction is submitted to Stellar. A match returns `403 { error: "SANCTIONS_HIT", reason: "..." }` and the payment is not submitted.
+
+| Variable | Default | Description |
+|---|---|---|
+| `SANCTIONS_API_KEY` | — | API key for the sanctions screening provider (required in production) |
+| `SANCTIONS_API_URL` | `https://api.ofac-api.com/v4/search` | Screening endpoint (OFAC-API compatible) |
+| `SANCTIONS_MIN_SCORE` | `85` | Minimum fuzzy-match score (0–100) to treat as a hit |
+
+**Without `SANCTIONS_API_KEY`** the check is skipped with a console warning. This is acceptable for development but **must be configured before going to production**.
+
+Compatible providers: [OFAC-API](https://ofac-api.com), [Comply Advantage](https://complyadvantage.com), [Chainalysis](https://chainalysis.com).
+
+### AML transaction monitoring (#502)
+
+After each successful payment, `amlMonitor.screenTransaction()` runs asynchronously and creates `AMLAlert` records in the database for any triggered rules. Alerts are visible at `GET /api/compliance/aml-alerts` (admin only).
+
+| Variable | Default | Description |
+|---|---|---|
+| `AML_LARGE_TX_THRESHOLD` | `10000` | Single transaction amount that triggers `LARGE_TX` |
+| `AML_STRUCTURING_THRESHOLD` | `1000` | Per-transaction ceiling for structuring detection |
+| `AML_STRUCTURING_COUNT` | `3` | Number of sub-threshold transactions in 24 h to trigger `STRUCTURING` |
+| `AML_VELOCITY_LIMIT` | `10000` | Total sent in 24 h that triggers `VELOCITY` |
+
+Rules implemented:
+
+- **LARGE_TX** — single transaction ≥ `AML_LARGE_TX_THRESHOLD`
+- **STRUCTURING** — more than `AML_STRUCTURING_COUNT` transactions each below `AML_STRUCTURING_THRESHOLD` within 24 h
+- **VELOCITY** — cumulative 24 h send total exceeds `AML_VELOCITY_LIMIT`
+- **UNVERIFIED_USER** — sender has no approved KYC record
+
+### Web Vitals analytics (#499)
+
+Frontend metrics (LCP, CLS, INP, FCP, TTFB) are sent via `navigator.sendBeacon` to `POST /api/analytics/web-vitals` on every page load. Aggregated p75 values are available at `GET /api/analytics/web-vitals/dashboard` (requires auth).
+
+The current implementation stores metrics in memory. For production, replace `webVitalsStore` in `backend/src/routes/analytics.js` with a time-series database (e.g. InfluxDB, TimescaleDB, or a Prometheus push gateway).
