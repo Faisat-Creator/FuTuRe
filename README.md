@@ -2,6 +2,8 @@
 
 A cross-border remittance application built on the Stellar blockchain, enabling fast and low-cost international money transfers.
 
+This repository includes both frontend and backend services for building a Stellar payment experience.
+
 ## Features
 
 - Create Stellar accounts
