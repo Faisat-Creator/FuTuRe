@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import express from 'express';
 import { body } from 'express-validator';
 import * as StellarSDK from '@stellar/stellar-sdk';
@@ -64,6 +65,16 @@ router.post('/import', rules.importAccount, validate, async (req, res) => {
 router.get('/:publicKey', rules.publicKeyParam, validate, async (req, res) => {
   try {
     const balance = await StellarService.getBalance(req.params.publicKey);
+
+    // ETag based on a hash of the balance payload (issue #356)
+    const etag = `"${crypto.createHash('sha256').update(JSON.stringify(balance)).digest('hex').slice(0, 16)}"`;
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+
     res.json(balance);
   } catch (error) {
     logError(req, error, { publicKey: req.params.publicKey });

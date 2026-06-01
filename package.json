@@ -9,6 +9,7 @@
     "frontend"
   ],
   "scripts": {
+    "prepare": "husky",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm run dev --workspace=backend",
     "dev:frontend": "npm run dev --workspace=frontend",
@@ -37,7 +38,20 @@
     "test:contracts:registry": "vitest run --config vitest.contracts.config.js contracts/registry.test.js",
     "test:contracts": "npm run test:contracts:consumer && npm run test:contracts:provider && npm run test:contracts:registry"
   },
+  "lint-staged": {
+    "**/*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "**/*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
   "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "eslint": "^9.28.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
     "@pact-foundation/pact": "^16.3.0",
     "@stryker-mutator/core": "^9.6.0",
     "@stryker-mutator/vitest-runner": "^9.6.0",

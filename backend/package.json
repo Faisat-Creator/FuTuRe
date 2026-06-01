@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "test": "vitest run",
     "format": "prettier --write \"src/**/*.js\"",
+    "lint": "eslint src/**/*.js",
     "test:performance": "vitest run tests/performance.benchmark.test.js",
     "load-test:regression": "k6 run load-tests/k6/scenarios/performance-regression.js",
     "load-test:endpoints": "k6 run load-tests/k6/scenarios/api-endpoints.js",
@@ -47,6 +48,7 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
+    "eslint": "^9.28.0",
     "prettier": "^3.3.3"
   }
 }
