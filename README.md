@@ -104,6 +104,44 @@ docker compose up --build
 3. Check balance to see your XLM
 4. Send payments to other Stellar addresses
 
+## Testnet Setup
+
+### Friendbot
+
+Friendbot is Stellar's automated account-funding service for the testnet. It credits any new (or unfunded) Stellar public key with **10,000 test XLM** at no cost, letting you start testing payments immediately without real funds.
+
+Fund an account via the API directly:
+
+```bash
+curl "https://friendbot.stellar.org/?addr=YOUR_PUBLIC_KEY"
+```
+
+Or use the bundled helper script (see `scripts/fund-testnet-account.sh`):
+
+```bash
+bash scripts/fund-testnet-account.sh GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGZWM9CQJHD9QDNHXHXN
+```
+
+The app calls Friendbot automatically when you click **Create Account** in the UI.
+
+### Testnet Limitations
+
+- **Quarterly resets** — the Stellar testnet is wiped roughly every three months. All accounts, balances, and transaction history are deleted. You must re-fund accounts after each reset.
+- Test XLM has no monetary value and cannot be transferred to mainnet.
+- Friendbot is only available on testnet; it does not exist on mainnet.
+
+### Testnet vs. Mainnet Configuration
+
+| Setting | Testnet | Mainnet |
+|---|---|---|
+| `STELLAR_NETWORK` | `testnet` | `mainnet` |
+| `HORIZON_URL` | `https://horizon-testnet.stellar.org` | `https://horizon.stellar.org` |
+| Network passphrase | `Test SDF Network ; September 2015` | `Public Global Stellar Network ; September 2015` |
+| Friendbot available | ✅ Yes | ❌ No |
+| Real funds | ❌ No | ✅ Yes |
+
+Set `STELLAR_NETWORK=testnet` (the default) in `backend/.env` for local development. Change to `mainnet` only for production deployments.
+
 ## Next Steps
 
 - Add stablecoin support (USDC)
