@@ -228,7 +228,7 @@ router.post('/payment/send', paymentRateLimiter, idempotencyMiddleware, requireK
       if (pushSub) {
         sendWebPush(pushSub, { title: 'Payment received', body: `You received ${amount} ${assetCode || 'XLM'}` }).catch(() => {});
       }
-    } catch (_) {}
+    } catch (_) { /* non-critical: recipient notification failure doesn't fail the payment */ }
 
     res.json(result);
   } catch (error) {

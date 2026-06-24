@@ -258,9 +258,7 @@ export async function sendPayment(sourceSecret, destination, amount, assetCode =
         correlationId,
       });
       // Track stats for cost monitoring
-      feeBumpStats.total += 1;
-      feeBumpStats.totalFeeStroops += StellarSDK.BASE_FEE * parseInt(process.env.FEE_BUMP_MULTIPLIER ?? '10', 10);
-      feeBumpStats.accounts.add(sourcePublicKey);
+      await incrementFeeBumpStats(sourcePublicKey, StellarSDK.BASE_FEE * parseInt(process.env.FEE_BUMP_MULTIPLIER ?? '10', 10));
     }
   }
 
@@ -512,7 +510,7 @@ export async function getFeeStats() {
     const book = await getHorizonServer().orderbook(StellarSDK.Asset.native(), usdc).limit(1).call();
     const ask = parseFloat(book.asks?.[0]?.price);
     if (ask > 0) xlmUsd = ask;
-  } catch (_) {}
+  } catch (_) { /* non-critical: XLM/USD price lookup failure */ }
 
   const feeUsd = xlmUsd ? feeXLM * xlmUsd : null;
 

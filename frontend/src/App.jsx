@@ -51,7 +51,6 @@ import { useTheme } from './contexts/ThemeContext';
 import { useAppState, useAppDispatch, A } from './store/index.js';
 import { useExchangeRate } from './hooks/useExchangeRate';
 import { useBalance, useSendPayment, useCreateAccount, useImportAccount, useKycStatus, useSaveAccountLabel, useNetworkStatusQuery } from './hooks/useQueryHooks';
-import { AMMPoolBrowser } from './components/AMMPoolBrowser';
 import { ConvertWidget } from './components/ConvertWidget';
 import { XLMInfoIcon } from './components/XLMInfoIcon';
 
@@ -111,7 +110,7 @@ function App() {
   }, [msg, dispatch]);
 
   const wsStatus = useWebSocket(account?.publicKey ?? null, handleWsMessage);
-  const { status: networkStatus } = useNetworkStatus();
+  const { status: networkStatus } = useNetworkStatusQuery();
   const { rate: xlmUsdRate, loading: rateLoading } = useExchangeRate(lastWsMessage);
 
   useEffect(() => {
@@ -195,8 +194,8 @@ function App() {
 
   const loadLabel = useCallback(async (publicKey) => {
     try {
-      const accountLabel = await getAccountLabel(publicKey);
-      dispatch({ type: A.SET_LABEL, payload: accountLabel });
+      const fetchedLabel = await getAccountLabel(publicKey);
+      dispatch({ type: A.SET_LABEL, payload: fetchedLabel });
     } catch { /* non-critical */ }
   }, [dispatch]);
 
@@ -261,6 +260,7 @@ function App() {
       msg.error(getFriendlyError(error), { retry: createAccount });
     } finally { dispatch({ type: A.SET_LOADING, payload: '' }); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, msg]);
 
   const importAccount = async (secretKey) => {
@@ -286,6 +286,7 @@ function App() {
     } catch (error) {
       logError(error, { context: 'checkBalance' });
       msg.error(getFriendlyError(error), { retry: checkBalance });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     } finally { dispatch({ type: A.SET_LOADING, payload: '' }); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account, dispatch, msg]);
@@ -333,8 +334,6 @@ function App() {
       resetForm();
       checkBalance();
       setShowPaymentConfirmation(false);
-      setAmount('');
-      setRecipient('');
     } catch (error) {
       dispatch({ type: A.REVERT_BALANCE });
       if (error?.response?.data?.error === 'KYC_REQUIRED') {
@@ -1143,6 +1142,7 @@ function App() {
           </Suspense>
         )}
       </AnimatePresence>
+    </motion.div>
     </div>
   </>
   );
