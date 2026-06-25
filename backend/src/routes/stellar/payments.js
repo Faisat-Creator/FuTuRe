@@ -23,6 +23,15 @@ function logError(req, error, context = {}) {
   });
 }
 
+function handleError(res, error, fallbackMessage) {
+  if (error.circuitOpen) return res.status(503).json({ error: 'Service temporarily unavailable' });
+  if (error.isTimeout)
+    return res
+      .status(504)
+      .json({ error: 'Gateway timeout — upstream service did not respond in time' });
+  return res.status(500).json({ error: fallbackMessage });
+}
+
 // Stricter rate limit for payment endpoint (10 req/min)
 const paymentRateLimiter = createRateLimiter({
   windowMs: 60000,
@@ -33,15 +42,37 @@ const paymentRateLimiter = createRateLimiter({
 router.post('/send', paymentRateLimiter, rules.sendPayment, validate, async (req, res) => {
   try {
     const { sourceSecret, destination, amount, assetCode, memo, memoType } = req.body;
-    const result = await StellarService.sendPayment(sourceSecret, destination, amount, assetCode, memo, memoType);
+    const result = await StellarService.sendPayment(
+      sourceSecret,
+      destination,
+      amount,
+      assetCode,
+      memo,
+      memoType,
+    );
 
-    const notification = { type: 'transaction', hash: result.hash, amount, assetCode: assetCode || 'XLM', timestamp: Date.now() };
+    const notification = {
+      type: 'transaction',
+      hash: result.hash,
+      amount,
+      assetCode: assetCode || 'XLM',
+      timestamp: Date.now(),
+    };
 
     // Notify sender's updated balance + tx notification
     const senderKey = StellarSDK.Keypair.fromSecret(sourceSecret).publicKey();
     const senderBalance = await StellarService.getBalance(senderKey);
-    broadcastToAccount(senderKey, { ...notification, direction: 'sent', balance: senderBalance.balances });
-    dispatchEvent(senderKey, 'payment_sent', { hash: result.hash, amount, assetCode: assetCode || 'XLM', destination });
+    broadcastToAccount(senderKey, {
+      ...notification,
+      direction: 'sent',
+      balance: senderBalance.balances,
+    });
+    dispatchEvent(senderKey, 'payment_sent', {
+      hash: result.hash,
+      amount,
+      assetCode: assetCode || 'XLM',
+      destination,
+    });
 
     // Invalidate cached balances for sender and recipient
     await invalidateBalance(senderKey);
@@ -50,18 +81,36 @@ router.post('/send', paymentRateLimiter, rules.sendPayment, validate, async (req
     // Notify recipient of incoming tx + updated balance
     try {
       const recipientBalance = await StellarService.getBalance(destination);
-      broadcastToAccount(destination, { ...notification, direction: 'received', balance: recipientBalance.balances });
-      dispatchEvent(destination, 'payment_received', { hash: result.hash, amount, assetCode: assetCode || 'XLM', source: senderKey });
+      broadcastToAccount(destination, {
+        ...notification,
+        direction: 'received',
+        balance: recipientBalance.balances,
+      });
+      dispatchEvent(destination, 'payment_received', {
+        hash: result.hash,
+        amount,
+        assetCode: assetCode || 'XLM',
+        source: senderKey,
+      });
       const pushSub = getSubscriptionByPublicKey(destination);
       if (pushSub) {
-        sendWebPush(pushSub, { title: 'Payment received', body: `You received ${amount} ${assetCode || 'XLM'}` }).catch(() => {});
+        sendWebPush(pushSub, {
+          title: 'Payment received',
+          body: `You received ${amount} ${assetCode || 'XLM'}`,
+        }).catch(() => {});
       }
-    } catch (_) { /* non-critical: recipient notification failure doesn't fail the payment */ }
+    } catch (_) {
+      /* non-critical: recipient notification failure doesn't fail the payment */
+    }
 
     res.json(result);
   } catch (error) {
-    logError(req, error, { destination: req.body.destination, amount: req.body.amount, assetCode: req.body.assetCode });
-    res.status(500).json({ error: 'Failed to send payment' });
+    logError(req, error, {
+      destination: req.body.destination,
+      amount: req.body.amount,
+      assetCode: req.body.assetCode,
+    });
+    return handleError(res, error, 'Failed to send payment');
   }
 });
 

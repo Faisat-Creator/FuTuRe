@@ -1,4 +1,5 @@
 import express from 'express';
+import { param } from 'express-validator';
 import { convert } from '../../services/exchangeRate.js';
 import { validate, rules } from '../../middleware/validate.js';
 import logger from '../../config/logger.js';
@@ -18,16 +19,21 @@ function logError(req, error, context = {}) {
 }
 
 // GET /convert/:from/:to/:amount
-router.get('/:from/:to/:amount', rules.assetCodeParams, validate, async (req, res) => {
-  try {
-    const amount = parseFloat(req.params.amount);
-    if (!isFinite(amount) || amount <= 0) return res.status(422).json({ error: 'Invalid amount' });
-    const result = await convert(amount, req.params.from, req.params.to);
-    res.json({ from: req.params.from, to: req.params.to, amount, converted: result });
-  } catch (error) {
-    logError(req, error, { from: req.params.from, to: req.params.to, amount: req.params.amount });
-    res.status(500).json({ error: 'Failed to convert amount' });
-  }
-});
+router.get(
+  '/:from/:to/:amount',
+  ...rules.assetCodeParams,
+  param('amount').isFloat({ gt: 0 }).withMessage('amount must be a positive number'),
+  validate,
+  async (req, res) => {
+    try {
+      const amount = parseFloat(req.params.amount);
+      const result = await convert(amount, req.params.from, req.params.to);
+      res.json({ from: req.params.from, to: req.params.to, amount, converted: result });
+    } catch (error) {
+      logError(req, error, { from: req.params.from, to: req.params.to, amount: req.params.amount });
+      res.status(500).json({ error: 'Failed to convert amount' });
+    }
+  },
+);
 
 export default router;

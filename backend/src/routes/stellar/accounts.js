@@ -22,6 +22,15 @@ function logError(req, error, context = {}) {
   });
 }
 
+function handleError(res, error, fallbackMessage) {
+  if (error.circuitOpen) return res.status(503).json({ error: 'Service temporarily unavailable' });
+  if (error.isTimeout)
+    return res
+      .status(504)
+      .json({ error: 'Gateway timeout — upstream service did not respond in time' });
+  return res.status(500).json({ error: fallbackMessage });
+}
+
 // Stricter rate limit for account creation (5 req/hour per IP) to prevent Friendbot abuse
 const accountCreateRateLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000,
@@ -40,7 +49,8 @@ router.post('/create', accountCreateRateLimiter, async (req, res) => {
 });
 
 router.post('/fund', rules.publicKeyBody, validate, async (req, res) => {
-  if (!StellarService.isTestnet()) return res.status(403).json({ error: 'Only available on testnet' });
+  if (!StellarService.isTestnet())
+    return res.status(403).json({ error: 'Only available on testnet' });
   try {
     const result = await StellarService.fundAccount(req.body.publicKey);
     res.json(result);
@@ -78,7 +88,7 @@ router.get('/:publicKey', rules.publicKeyParam, validate, async (req, res) => {
     res.json(balance);
   } catch (error) {
     logError(req, error, { publicKey: req.params.publicKey });
-    res.status(500).json({ error: 'Failed to retrieve balance' });
+    return handleError(res, error, 'Failed to retrieve balance');
   }
 });
 
@@ -88,7 +98,7 @@ router.get('/:publicKey/trustlines', rules.publicKeyParam, validate, async (req,
     res.json({ trustlines });
   } catch (error) {
     logError(req, error, { publicKey: req.params.publicKey });
-    res.status(500).json({ error: 'Failed to retrieve trustlines' });
+    return handleError(res, error, 'Failed to retrieve trustlines');
   }
 });
 
@@ -104,12 +114,12 @@ router.get('/:publicKey/transactions', rules.publicKeyParam, validate, async (re
     });
     if (hash) {
       const prefix = hash.toLowerCase();
-      result.records = result.records.filter(tx => tx.hash?.toLowerCase().startsWith(prefix));
+      result.records = result.records.filter((tx) => tx.hash?.toLowerCase().startsWith(prefix));
     }
     res.json(result);
   } catch (error) {
     logError(req, error, { publicKey: req.params.publicKey });
-    res.status(500).json({ error: 'Failed to retrieve transactions' });
+    return handleError(res, error, 'Failed to retrieve transactions');
   }
 });
 
@@ -126,8 +136,14 @@ router.get('/:publicKey/label', rules.publicKeyParam, validate, async (req, res)
   }
 });
 
-router.put('/:publicKey/label', rules.publicKeyParam, validate,
-  body('accountLabel').trim().isLength({ max: 50 }).withMessage('Label must be 50 characters or fewer'),
+router.put(
+  '/:publicKey/label',
+  rules.publicKeyParam,
+  validate,
+  body('accountLabel')
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('Label must be 50 characters or fewer'),
   validate,
   async (req, res) => {
     try {
@@ -147,7 +163,7 @@ router.put('/:publicKey/label', rules.publicKeyParam, validate,
       logError(req, error, { publicKey: req.params.publicKey });
       res.status(500).json({ error: 'Failed to update account label' });
     }
-  }
+  },
 );
 
 router.get('/:publicKey/settings', rules.publicKeyParam, validate, async (req, res) => {
@@ -169,8 +185,10 @@ router.get('/:publicKey/settings', rules.publicKeyParam, validate, async (req, r
   }
 });
 
-router.put('/:publicKey/settings',
-  rules.publicKeyParam, validate,
+router.put(
+  '/:publicKey/settings',
+  rules.publicKeyParam,
+  validate,
   body('defaultAsset').optional().isString().trim().isLength({ min: 1, max: 12 }),
   body('notificationsOn').optional().isBoolean(),
   validate,
@@ -195,7 +213,7 @@ router.put('/:publicKey/settings',
       logError(req, error, { publicKey: req.params.publicKey });
       res.status(500).json({ error: 'Failed to update account settings' });
     }
-  }
+  },
 );
 
 router.post('/merge', rules.mergeAccount, validate, async (req, res) => {

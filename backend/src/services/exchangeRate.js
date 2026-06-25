@@ -9,8 +9,13 @@ import { getHorizonServer } from './stellar.js';
 // Config
 // ---------------------------------------------------------------------------
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
-const CACHE_TTL_MS   = (parseInt(process.env.RATE_CACHE_TTL_S, 10) || 60) * 1000;
+const CACHE_TTL_MS = (parseInt(process.env.RATE_CACHE_TTL_S, 10) || 60) * 1000;
 const API_MIN_GAP_MS = 2_000; // minimum ms between CoinGecko calls (rate-limit guard)
+
+/** Timeout (ms) for exchange rate API calls. Reads EXCHANGE_RATE_TIMEOUT_MS env var, default 5 000. */
+function getExchangeRateTimeout() {
+  return parseInt(process.env.EXCHANGE_RATE_TIMEOUT_MS ?? '5000', 10);
+}
 
 // CoinGecko coin IDs for supported assets
 const COINGECKO_IDS = { XLM: 'stellar', USDC: 'usd-coin' };
@@ -30,12 +35,17 @@ onConfigChange(() => {
   logger.info('exchangeRate.cache.cleared', { reason: 'config reload' });
 });
 
-function cacheKey(from, to) { return `${from}:${to}`; }
+function cacheKey(from, to) {
+  return `${from}:${to}`;
+}
 
 function getCached(from, to) {
   const entry = cache.get(cacheKey(from, to));
   if (!entry) return null;
-  if (Date.now() - entry.fetchedAt > CACHE_TTL_MS) { cache.delete(cacheKey(from, to)); return null; }
+  if (Date.now() - entry.fetchedAt > CACHE_TTL_MS) {
+    cache.delete(cacheKey(from, to));
+    return null;
+  }
   return entry.rate;
 }
 
@@ -52,7 +62,7 @@ async function fetchFromCoinGecko(from, to) {
   lastFetchAt = now;
 
   const fromId = COINGECKO_IDS[from];
-  const toId   = COINGECKO_IDS[to];
+  const toId = COINGECKO_IDS[to];
   if (!fromId || !toId) return null;
 
   try {
@@ -60,7 +70,7 @@ async function fetchFromCoinGecko(from, to) {
     const headers = apiKey ? { 'x-cg-demo-api-key': apiKey } : {};
     const res = await fetch(
       `${COINGECKO_BASE}/simple/price?ids=${fromId}&vs_currencies=${toId === 'usd-coin' ? 'usd' : toId}`,
-      { headers, signal: AbortSignal.timeout(5_000) }
+      { headers, signal: AbortSignal.timeout(getExchangeRateTimeout()) },
     );
     if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
     const data = await res.json();
@@ -80,8 +90,10 @@ async function fetchFromCoinGecko(from, to) {
 // ---------------------------------------------------------------------------
 async function fetchFromStellarDex(from, to) {
   try {
-    const fromAsset = from === 'XLM' ? StellarSDK.Asset.native() : new StellarSDK.Asset(from, getIssuer(from));
-    const toAsset   = to   === 'XLM' ? StellarSDK.Asset.native() : new StellarSDK.Asset(to,   getIssuer(to));
+    const fromAsset =
+      from === 'XLM' ? StellarSDK.Asset.native() : new StellarSDK.Asset(from, getIssuer(from));
+    const toAsset =
+      to === 'XLM' ? StellarSDK.Asset.native() : new StellarSDK.Asset(to, getIssuer(to));
     const orderbook = await getHorizonServer().orderbook(fromAsset, toAsset).call();
     const rate = orderbook.asks?.[0]?.price ? parseFloat(orderbook.asks[0].price) : null;
     if (rate != null) logger.debug('exchangeRate.stellarDex', { from, to, rate });
@@ -124,18 +136,18 @@ export async function convert(amount, from, to) {
 /** Fetch all supported pair rates at once via a single batched CoinGecko request. */
 export async function getAllRates() {
   // Collect assets that have a CoinGecko ID and aren't fully cached yet
-  const needed = SUPPORTED_ASSETS.filter(a => COINGECKO_IDS[a]);
+  const needed = SUPPORTED_ASSETS.filter((a) => COINGECKO_IDS[a]);
 
   // Single batched request: all coin IDs vs USD (USDC is pegged 1:1 to USD)
   const pricesUsd = {};
   try {
-    const ids = needed.map(a => COINGECKO_IDS[a]).join(',');
+    const ids = needed.map((a) => COINGECKO_IDS[a]).join(',');
     const apiKey = process.env.COINGECKO_API_KEY;
     const headers = apiKey ? { 'x-cg-demo-api-key': apiKey } : {};
-    const res = await fetch(
-      `${COINGECKO_BASE}/simple/price?ids=${ids}&vs_currencies=usd`,
-      { headers, signal: AbortSignal.timeout(5_000) }
-    );
+    const res = await fetch(`${COINGECKO_BASE}/simple/price?ids=${ids}&vs_currencies=usd`, {
+      headers,
+      signal: AbortSignal.timeout(getExchangeRateTimeout()),
+    });
     if (res.ok) {
       const data = await res.json();
       for (const asset of needed) {
@@ -178,8 +190,21 @@ function notifyIfChanged(from, to, rate) {
   if (prev == null) return;
   const change = Math.abs(rate - prev) / prev;
   if (change >= CHANGE_THRESHOLD) {
-    logger.info('exchangeRate.changed', { from, to, prev, rate, changePct: (change * 100).toFixed(2) });
+    logger.info('exchangeRate.changed', {
+      from,
+      to,
+      prev,
+      rate,
+      changePct: (change * 100).toFixed(2),
+    });
     // Broadcast to the 'rates' channel (clients subscribed with publicKey='rates')
-    broadcastToAccount('rates', { type: 'rateChange', from, to, rate, prev, timestamp: Date.now() });
+    broadcastToAccount('rates', {
+      type: 'rateChange',
+      from,
+      to,
+      rate,
+      prev,
+      timestamp: Date.now(),
+    });
   }
 }

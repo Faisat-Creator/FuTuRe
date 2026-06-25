@@ -1,6 +1,7 @@
 import express from 'express';
 import os from 'os';
 import * as StellarService from '../services/stellar.js';
+import { getCircuitState } from '../services/circuitBreaker.js';
 import { eventMonitor, eventStore } from '../eventSourcing/index.js';
 import { auditLogger } from '../security/index.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -40,6 +41,15 @@ function getApplicationInfo() {
 }
 
 async function checkStellarConnectivity() {
+  const circuit = getCircuitState();
+  if (circuit.state === 'OPEN') {
+    return {
+      status: 'unhealthy',
+      error: 'Circuit breaker is open',
+      circuit,
+      responseTime: Date.now(),
+    };
+  }
   try {
     const status = await StellarService.getNetworkStatus();
     return {
@@ -49,12 +59,14 @@ async function checkStellarConnectivity() {
       online: status.online,
       horizonVersion: status.horizonVersion,
       currentProtocolVersion: status.currentProtocolVersion,
+      circuit,
       responseTime: Date.now(),
     };
   } catch (error) {
     return {
       status: 'unhealthy',
       error: error.message,
+      circuit,
       responseTime: Date.now(),
     };
   }
@@ -68,7 +80,7 @@ async function checkRedisConnectivity() {
         message: 'Redis not configured',
       };
     }
-    
+
     // Try to ping Redis
     const pong = await redisBackend.client.ping();
     return {
@@ -232,7 +244,9 @@ async function checkDependencies() {
   });
 
   return {
-    overall: checks.every((c) => c.status === 'healthy' || c.status === 'unavailable') ? 'healthy' : 'degraded',
+    overall: checks.every((c) => c.status === 'healthy' || c.status === 'unavailable')
+      ? 'healthy'
+      : 'degraded',
     dependencies: checks,
   };
 }
@@ -262,9 +276,10 @@ router.get('/health', async (req, res) => {
     ];
 
     // Calculate overall health (exclude unavailable services)
-    const criticalChecks = healthChecks.filter(c => c.status !== 'unavailable');
-    const healthyCount = criticalChecks.filter(c => c.status === 'healthy').length;
-    const overallHealth = criticalChecks.length > 0 ? Math.round((healthyCount / criticalChecks.length) * 100) : 100;
+    const criticalChecks = healthChecks.filter((c) => c.status !== 'unavailable');
+    const healthyCount = criticalChecks.filter((c) => c.status === 'healthy').length;
+    const overallHealth =
+      criticalChecks.length > 0 ? Math.round((healthyCount / criticalChecks.length) * 100) : 100;
     const status = overallHealth >= 80 ? 'healthy' : overallHealth >= 50 ? 'degraded' : 'unhealthy';
 
     const healthData = {
@@ -308,8 +323,8 @@ router.get('/health/ready', async (req, res) => {
     const wsCheck = await checkWebSocketConnectivity();
 
     // Ready if critical services are healthy (Redis and email can be unavailable)
-    const isReady = 
-      stellarCheck.status === 'healthy' && 
+    const isReady =
+      stellarCheck.status === 'healthy' &&
       databaseCheck.status === 'healthy' &&
       wsCheck.status === 'healthy';
 
@@ -362,7 +377,7 @@ router.get('/metrics', (req, res) => {
           free: systemInfo.freemem,
           used: systemInfo.totalmem - systemInfo.freemem,
           usagePercentage: Math.round(
-            ((systemInfo.totalmem - systemInfo.freemem) / systemInfo.totalmem) * 100
+            ((systemInfo.totalmem - systemInfo.freemem) / systemInfo.totalmem) * 100,
           ),
         },
       },

@@ -81,6 +81,37 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    // Map 503 and 429 to user-friendly messages before the 401-retry logic
+    const status = error.response?.status;
+    if (status === 503) {
+      const friendly = new Error('The service is temporarily unavailable.');
+      friendly.isNetworkError = true;
+      friendly.status = 503;
+      return Promise.reject(friendly);
+    }
+    if (status === 429) {
+      const retryAfter = error.response?.headers?.['retry-after'];
+      const seconds = retryAfter ? parseInt(retryAfter, 10) : null;
+      const msg = seconds
+        ? `Too many requests. Please wait ${seconds} second${seconds !== 1 ? 's' : ''}.`
+        : 'Too many requests. Please try again later.';
+      const friendly = new Error(msg);
+      friendly.isNetworkError = true;
+      friendly.status = 429;
+      friendly.retryAfter = seconds;
+      return Promise.reject(friendly);
+    }
+
+    // Network errors (no response)
+    if (!error.response && !error.config?._retry) {
+      if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+        const friendly = new Error('The request took too long. Please try again.');
+        friendly.isNetworkError = true;
+        return Promise.reject(friendly);
+      }
+    }
+
     if (
       error.response?.status === 401 &&
       originalRequest &&
@@ -100,7 +131,7 @@ apiClient.interceptors.response.use(
     }
 
     return Promise.reject(normalizeAxiosError(error));
-  }
+  },
 );
 
 export default apiClient;

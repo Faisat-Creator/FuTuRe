@@ -25,3 +25,18 @@ export function getSupportedAssets() {
   const network = getConfig().stellar.network;
   return ['XLM', ...Object.keys(ASSETS[network] ?? {})];
 }
+
+/**
+ * Lazy-evaluated supported asset list.
+ * Use getSupportedAssets() at module load time is unsafe because getConfig()
+ * throws if env vars are missing. This Proxy defers the call until first access.
+ */
+export const SUPPORTED_ASSETS = new Proxy([], {
+  get(_, prop) {
+    const list = getSupportedAssets();
+    if (prop === 'length') return list.length;
+    if (prop === Symbol.iterator) return list[Symbol.iterator].bind(list);
+    if (typeof prop === 'string' && !isNaN(prop)) return list[prop];
+    return typeof list[prop] === 'function' ? list[prop].bind(list) : list[prop];
+  },
+});
