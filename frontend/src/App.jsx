@@ -617,7 +617,7 @@ function App() {
           </AnimatePresence>
 
           <header>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="app-header-row">
               <div>
                 <h1>Stellar Remittance Platform</h1>
                 {account && (
@@ -684,7 +684,7 @@ function App() {
                   </div>
                 )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className="header-actions">
                 <button
                   type="button"
                   className="theme-toggle-btn"
@@ -759,7 +759,9 @@ function App() {
                     }}
                     aria-hidden="true"
                   />
-                  <span aria-hidden="true">{wsStatus}</span>
+                  <span aria-hidden="true" className={wsStatus === 'failed' ? 'ws-status-failed' : ''}>
+                    {wsStatus === 'failed' ? 'Connection lost' : wsStatus}
+                  </span>
                 </motion.span>
               </div>
             </div>
