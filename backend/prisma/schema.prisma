@@ -26,6 +26,7 @@ model User {
   kycRecord               KYCRecord?
   amlAlerts               AMLAlert[]
   auditLogs               AuditLog[]
+  webAuthnCredentials     WebAuthnCredential[]
 
   @@index([deletedAt])
 }
@@ -189,6 +190,19 @@ model AMLAlert {
   createdAt     DateTime    @default(now())
 
   @@index([transactionId])
+  @@index([userId])
+}
+
+model WebAuthnCredential {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String   @unique
+  publicKey    String
+  counter      BigInt   @default(0)
+  deviceName   String?
+  createdAt    DateTime @default(now())
+
   @@index([userId])
 }
 
